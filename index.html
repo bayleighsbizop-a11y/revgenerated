@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Revenue Generated</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent-blue: #4d9fff;
+    --text: #f0f0f8;
+    --muted: #6b6b8a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px 36px;
+    width: 100%;
+    max-width: 340px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent-blue);
+  }
+
+  .card::after {
+    content: '';
+    position: absolute;
+    bottom: -60px; right: -60px;
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(77,159,255,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .label-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    box-shadow: 0 0 6px var(--accent-blue);
+  }
+
+  .value {
+    font-family: 'DM Mono', monospace;
+    font-size: 52px;
+    font-weight: 500;
+    color: var(--accent-blue);
+    line-height: 1;
+    margin-bottom: 12px;
+    letter-spacing: -0.02em;
+  }
+
+  .value.loading-text {
+    font-size: 32px;
+    color: var(--muted);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  .sub-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .sub {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .sub strong {
+    color: rgba(77,159,255,0.7);
+    font-weight: 400;
+  }
+
+  .refresh-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .refresh-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+  .refresh-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .error-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: #ff5f5f;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="label"><span class="label-dot"></span>Revenue Generated</div>
+  <div class="value loading-text" id="value">Loading...</div>
+  <div class="sub-row">
+    <div class="sub" id="sub"></div>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadData()">↺</button>
+  </div>
+</div>
+
+<script>
+const API_KEY     = 'pit-834b62f4-825e-4f0e-96e8-1862f38e6a43';
+const LOCATION_ID = 'cykm9wVOecqepkLoC34V';
+
+const fmt = n => 'AU$' + Math.round(n).toLocaleString('en-AU');
+
+async function fetchAllWon() {
+  let all = [], startAfter = null, startAfterId = null;
+  while (true) {
+    let url = `https://services.leadconnectorhq.com/opportunities/search?location_id=${LOCATION_ID}&status=won&limit=100`;
+    if (startAfter)   url += `&startAfter=${startAfter}`;
+    if (startAfterId) url += `&startAfterId=${startAfterId}`;
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${API_KEY}`, 'Version': '2021-07-28' }
+    });
+    if (!res.ok) throw new Error(`API error ${res.status}`);
+    const data = await res.json();
+    const opps = data.opportunities || [];
+    all = all.concat(opps);
+    if (opps.length < 100 || !data.meta?.startAfterId) break;
+    startAfter   = data.meta.startAfter;
+    startAfterId = data.meta.startAfterId;
+  }
+  return all;
+}
+
+async function loadData() {
+  const btn = document.getElementById('refreshBtn');
+  const valEl = document.getElementById('value');
+  const subEl = document.getElementById('sub');
+  btn.disabled = true;
+  valEl.className = 'value loading-text';
+  valEl.textContent = 'Loading...';
+  subEl.innerHTML = '';
+
+  try {
+    const opps = await fetchAllWon();
+    const total = opps.reduce((s, o) => s + (o.monetaryValue || 0), 0);
+
+    valEl.className = 'value';
+    valEl.textContent = fmt(total);
+
+    const now = new Date().toLocaleString('en-AU', { timeStyle: 'short' });
+    subEl.innerHTML = `<strong>${opps.length} won deals</strong> · ${now}`;
+  } catch (e) {
+    valEl.className = 'value';
+    valEl.innerHTML = `<span class="error-text">⚠ ${e.message}</span>`;
+  }
+
+  btn.disabled = false;
+}
+
+loadData();
+</script>
+</body>
+</html>
